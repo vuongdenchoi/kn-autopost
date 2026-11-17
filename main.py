@@ -14,7 +14,7 @@ import requests
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 # ======================= CẤU HÌNH =======================
-FB_PAGE_ID       = os.getenv("FB_PAGE_ID", "")
+FB_PAGE_ID       = os.getenv("FB_PAGE_ID", "").strip()
 FB_PAGE_TOKEN    = os.getenv("FB_PAGE_TOKEN", "")
 ANTHROPIC_KEY    = os.getenv("ANTHROPIC_API_KEY", "")      # không bắt buộc (có thì caption hay hơn)
 ANTHROPIC_MODEL  = os.getenv("ANTHROPIC_MODEL", "claude-haiku-5-5")
@@ -302,10 +302,27 @@ def build_caption(it, vi):
             f"⚠️ Giao dịch CFD/Forex có rủi ro cao. Đây không phải lời khuyên đầu tư.\n"
             f"{HASHTAGS} {tag}").strip()
 
+_PAGE_TOKEN = None
+def page_token():
+    """Nếu secret là mã người dùng, tự đổi sang mã của Page."""
+    global _PAGE_TOKEN
+    if _PAGE_TOKEN: return _PAGE_TOKEN
+    tok = FB_PAGE_TOKEN.strip()
+    try:
+        r = requests.get(f"https://graph.facebook.com/{GRAPH_VERSION}/me/accounts",
+                         params={"fields": "id,name,access_token", "limit": 100, "access_token": tok}, timeout=30).json()
+        for p in r.get("data", []):
+            if p["id"] == FB_PAGE_ID:
+                log("Đã lấy mã Page từ mã người dùng:", p["name"]); tok = p["access_token"]; break
+    except Exception as e:
+        log("Không kiểm tra được loại mã:", e)
+    _PAGE_TOKEN = tok
+    return tok
+
 def post_to_facebook(image_path, caption):
     url = f"https://graph.facebook.com/{GRAPH_VERSION}/{FB_PAGE_ID}/photos"
     with open(image_path, "rb") as f:
-        r = requests.post(url, timeout=120, data={"caption": caption, "access_token": FB_PAGE_TOKEN},
+        r = requests.post(url, timeout=120, data={"caption": caption, "access_token": page_token()},
                           files={"source": f})
     if r.status_code != 200:
         raise RuntimeError(f"Facebook lỗi {r.status_code}: {r.text}")
